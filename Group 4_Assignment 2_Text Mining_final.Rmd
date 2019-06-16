@@ -1,0 +1,745 @@
+---
+title: 'Assignment 2 - Text Mining: Sentiment v/s Stock price analysis '
+author: "by Shawn Mills and Steven Too Heng Kwee"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, echo=FALSE}
+############################################################################################################
+##NOTE:The Knit function of this document requires Apple.csv, Boeing.csv, Tesla.csv and Levis.csv to be    # ##downloaded in thesame folder                                                                             #
+############################################################################################################
+```
+
+### Abstract
+Although it is generally accepted that stock market prices are largely driven by new information and follow a random pattern, many studies have tried to predict stock market behavior using external stimuli on the basis of behavioral economics that emphasizes the important role of emotion in decision making.
+
+The last decade has seen  the use of Online Micro-blogging on social networks for indicating opinions about certain entity in very short messages. Popular micro-blogs like twitter and facebook now garner maximum amount of attention in areas related to product, movie reviews, stock exchange etc.
+
+More recently, there has been evidence of causation between public sentiment and the stock market movements. Social networks nowadays enable the instant spread out and amplification of public sentiment.  E.g, earlier in his presidency, Trump tweets seemed to cause declines in the stock of companies like Boeing (BA) and Amazon.com (AMZN).  Reversely, Tesla (TSLA) positive sentiment keeps maintaining a high value stock price despite being a non profitable company.
+
+Due to day by day increase in the number of users on those social networking platforms, huge amount of unstructured data are being generated in the form of text, video and images.     
+
+Text Mining has become a rising new field that attempts to assemble novel information from natural language text. To extract significant information from text many text mining techniques are now available.
+
+### Introduction
+The goal of this project is an attempt to analyze what people are posting on social networks (Twitter) which help companies to understand, qualify and quantify the public perception. Analyzing each post and understanding the sentiment associated with that post helps us identify the mood toward a company and hence our inclination to invest or disinvest in a particular company.  
+
+Phrased as a Business Problem or Opportunity:
+**Can Text Mining Sentiment analysis correlate and predict the stock price movement of select companies?**  
+
+### Background
+#### What is Twitter?
+Twitter is an online micro-blogging tool that disseminates more than 400 million messages per day, including vast amounts of information about almost all industries from entertainment to sports, health to business etc.  It has become a medium where people
+
+- Express their interests
+- Share their views.
+- Share their displeasures.
+- Compliment companies for good and poor services.
+
+Twitter provides unprecedented access to our lawmakers and to our celebrities, as well as to news as its happening. Twitter represents an important data source for the business models of huge companies as well.
+
+#### What is a company stock?
+More formally a stock can be defined as:
+The stock of a corporation is all of the shares into which ownership of the corporation is divided. In American English, the shares are commonly called stocks. A single share of the stock represents fractional ownership of the corporation in proportion to the total number of shares. This typically entitles the stockholder to that fraction of the company’s earnings, proceeds from liquidation of assets (after discharge of all senior claims such as secured and unsecured debt), or voting power, often dividing these up in proportion to the amount of money each stockholder has invested. -Wikipedia
+
+
+### Data preparation
+For the purpose of this project, we will analyse the twitter data and stock price of 4 major companies.
+
+- **Apple**
+
+- **Boeing**
+
+- **Tesla**
+
+- **Levis**
+
+Since the Twitter API has a **10 days historical restriction**, our analysis will be limited to this restriction.  
+The analytical process for Apple will be laid out. There after, the same process will be applied to Boeing, Tesla and Levis but only the summary charts will be shown. 
+
+### Analytical process
+The code is divided into following parts:
+
+   1. Establish twitter api connection through R
+   2. Extract tweets from Twitter feed or loading twitter dasaset
+   3. Data Cleansing and corpus creation 
+   4. Term Document Matrix and Word Cloud
+   5. Sentiment Analysis
+   6. Loading Stock price
+   7. Sentiment comparison with stock price
+  
+### Company: Apple (Stock: AAPL)
+Apple Inc. designs, manufactures, and markets mobile communication and media devices, and personal computers. Its current stock market capitalization is $886 Billions. 
+
+#### 1. Establish twitter api connection through R
+Temporary authentication code shown below.
+
+```{r}
+library(twitteR)
+#The first step is to create a Twitter application for yourself. Go to 
+#https://twitter.com/apps/new and log in. After filling in the basic info, go to the
+#"Settings" tab and select "Read, Write and Access direct messages". Make sure
+#to click on the save button after doing this. In the "Details" tab, take note of
+#your consumer key and consumer secret.
+
+#setup_twitter_oauth("API key", "API secret", "Access token", "Access secret")
+
+setup_twitter_oauth("dCLTqy3rb6KMKJJnBEArwC71G", "oFbsYOCkKdfZqXGMQNkOGoId629S263hNqzbyTki0y9wqY2Zca", "1136999725402664960-9W5tHHU2Wxcx1CsNx8VHxxSleFtRkU", "cnXunJeEi1b2CPXg5TIFx4o1PddjUvByqNRrd6oywtErN")
+
+```
+
+#### 2. Extract tweets from Twitter feed or loading twitter dataset
+Download the twitter feed for posts containing "@Apple".
+Sample dataset(Apple.csv) used here was captured for any posts containing "@Apple". It contains 9925 tweets dating from june 12, 2019 to June 14, 2019
+
+```{r}
+#Uncomment the following to download fresh data. Please allow for sufficient time.
+#myTweets <- searchTwitter("@Apple", lang="en", retryOnRateLimit = 20, n=10000)
+#length(myTweets)
+#
+# convert tweets to a dataframe
+#tweets.df <- twListToDF(myTweets)
+#dim(tweets.df)
+
+# For testing, import the Apple.csv file in the same folder as this rmd file, otherwise comment this out
+tweets.df <- read.csv(file = "./Apple.csv")
+dim(tweets.df)
+```
+
+```{r, include=FALSE}
+
+numRows <- nrow(tweets.df) #used later to determine cut of number of terms
+
+# if importing from csv, convert columns to correct type
+tweets.df$text <- as.character(tweets.df$text)
+tweets.df$created <- as.POSIXct(tweets.df$created)
+
+```
+####  3. Data Cleansing  and corpus creation
+Creating corpus to remove punctuations, numbers, http addresses, stopwords and lemmatize words 
+```{r, message=FALSE, warning=FALSE}
+   
+ # convert dataframe to a corpus
+library(tm)
+myCorpus <- Corpus(VectorSource(tweets.df$text))
+
+# remove punctuation
+myCorpus <- tm_map(myCorpus, removePunctuation)
+# remove numbers
+myCorpus <- tm_map(myCorpus, removeNumbers)
+# remove http*
+toSpace = content_transformer( function(x, pattern) gsub(pattern,"",x) )
+myCorpus = tm_map( myCorpus, toSpace, "https.*")
+# remove stopwords
+library(stopwords)
+myStopwords <- c(stopwords(language="en", source="smart"))
+
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+myCorpus <- tm_map(myCorpus, removeWords, myStopwords)
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load_gh("trinker/textstem")
+pacman::p_load(textstem, dplyr)
+
+myCorpus <- tm_map(myCorpus, lemmatize_words)  
+   
+```
+
+#### 4.Term Document Matrix and Word Cloud
+Below are terms having frequency of at least 5%. Aside the word apple and iphone, notice the word winning and customised.
+
+```{r, include=FALSE}
+
+#Building a Document-Term Matrix
+myDtm <- TermDocumentMatrix(myCorpus, control = list(minWordLength = 1))
+#inspect(myDtm)
+
+rowTotals <- apply(myDtm , 1, sum) #Find the sum of words in each Document
+myDtm <- myDtm[rowTotals > 0, ] #remove all docs without words
+```   
+```{r, message=FALSE, warning=FALSE}
+#Frequent Terms and Association
+freq.terms <- findFreqTerms(myDtm, lowfreq=(numRows / 20))
+
+term.freq <- rowSums(as.matrix(myDtm))
+term.freq <- subset(term.freq, term.freq >= (numRows / 20))
+df <- data.frame(term = names(term.freq), freq = term.freq)
+
+library(ggplot2)
+ggplot(df, aes(x = term, y = freq)) + geom_bar(stat = "identity") +
+  xlab("Terms") + ylab("Count") + coord_flip()
+
+```
+```{r, include=FALSE}
+# Word cloud setup
+library(wordcloud)
+m <- as.matrix(myDtm)
+# calculate the frequency of words and sort it by frequency
+word.freq <- sort(rowSums(m), decreasing = T)
+# colors
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:4)]
+```
+
+```{r}
+
+# plot word cloud
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = (numRows / 100),
+          random.order = F, colors = pal)
+```
+
+#### 5.Sentiment Analysis
+
+```{r, include=FALSE}
+# Sentiment analysis
+library(data.table)
+require(devtools)
+#install_github("sentiment140", "okugami79")
+
+library(sentimentr)
+sentiments <- sentiment_by(tweets.df$text)
+sentiments <- as.data.frame(sentiments)
+```
+Chart below the sentiment score average per day.
+
+```{r}
+# sentiment plot
+colnames(sentiments)=c("score")
+sentiments$date <- as.IDate(tweets.df$created)
+result <- aggregate(score ~ date, data = sentiments, sum)
+plot(result, type = "l")
+```
+
+
+#### 6.Loading Stock price
+Stock price movements are extracted from "Yahoo". Dates and closing values are adjusted according to Twitter data time spread. The stock market values are available only during week days trade.   
+
+```{r, message=FALSE, warning=FALSE}
+# request stock price data from source "yahoo"
+library(quantmod)
+start <- as.Date(result[1,1])
+end <- as.Date(result[nrow(result),1] + 1)
+stockprices <- getSymbols("AAPL", src = "yahoo", from = start, to = end, auto.assign = FALSE)
+stockprices <- data.frame(date=index(stockprices), coredata(stockprices))
+names(stockprices) <- c("date","Open","High","Low","Close","Volume","Adjusted")
+```
+```{r}
+stockprices
+# set up a data frame for plotting the Close price
+stockline <- stockprices[,c("date","Close")]
+plot(result,type="l",col="red")
+lines(stockline,col="green")
+```
+
+#### 7.Sentiment comparison with stock price
+Below crosed comparison shows that for snapshot of Apple tweets which was used, there was a very high correlation between the Sentiment displayed and their actual daily stock price.   
+
+```{r}
+# normalize then replot
+normresult <- result
+normresult$score <- (normresult$score - min(result$score)) / (max(result$score) - min(result$score))
+
+normstock <- stockline
+normstock$Close <- (normstock$Close - min(stockline$Close)) / (max(stockline$Close) - min(stockline$Close))
+
+plot(normresult,type="l",col="red")
+lines(normstock,col="green")
+legend("right", c("Sentiment", "Stock"), col = c("red","green"), lty = 1:3, bg="grey95")#, cex = 0.5)
+title(main = "Normalized Sentiment vs. Stock Price Changes by Day")
+
+
+# Correlation
+df <- merge(result, stockprices[,c("date","Close")], by = "date")
+res <- cor.test(df$score, df$Close, 
+                method = "pearson")
+res
+```
+
+
+### Company: Boeing (Stock:BA)
+The Boeing Co. is an aerospace company, which engages in the manufacture of commercial jetliners and defense, space and security systems.
+
+Sample Twitter dataset (Boeing.csv) was captured for any "@Boeing" indicator. It contains 3738 tweets from June 05, 2019 to June 14, 2019. Same analytical process as above applied.
+
+```{r, include=FALSE}
+# Download the twitter feed for posts containing "@Boeing"
+#
+#library(twitteR)
+
+# uncomment the following to download fresh data
+#setup_twitter_oauth("yn8eTLfsrUlzv2Y4brm2iJ3f7", "Ulv7MgRbr8JlUSS86kHKuLcN2qRnoTgp5OuyFWW24Xqx63wAOM", 
+#                    "1137080949093650433-NgSH58Rl1S1TLNIo9v7iYH5No3mXjG", #"rCwE8p4sBn77y93NQYsdTrxfdZihs51H5EjwcFa4ftJHI")
+#myTweets <- searchTwitter("@Boeing", lang="en", retryOnRateLimit = 5, n=10000) 
+#length(myTweets)
+
+# convert tweets to a dataframe
+#tweets.df <- twListToDF(myTweets)
+#dim(tweets.df)
+
+
+# if testing, import the Boeing.csv file, otherwise comment this out
+
+tweets.df <- read.csv(file = "./Boeing.csv")
+
+# length(tweets.df)
+numRows <- nrow(tweets.df) #used later to determine number of terms
+
+# if importing from csv, convert columns to correct type
+tweets.df$text <- as.character(tweets.df$text)
+tweets.df$created <- as.POSIXct(tweets.df$created)
+
+# convert dataframe to a corpus
+#library(tm)
+myCorpus <- Corpus(VectorSource(tweets.df$text))
+
+# remove punctuation
+myCorpus <- tm_map(myCorpus, removePunctuation)
+# remove numbers
+myCorpus <- tm_map(myCorpus, removeNumbers)
+# remove http*
+toSpace = content_transformer( function(x, pattern) gsub(pattern,"",x) )
+myCorpus = tm_map( myCorpus, toSpace, "https.*")
+# remove stopwords
+#library(stopwords)
+myStopwords <- c(stopwords(language="en", source="smart"))
+
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+myCorpus <- tm_map(myCorpus, removeWords, myStopwords)
+
+#if (!require("pacman")) install.packages("pacman")
+#pacman::p_load_gh("trinker/textstem")
+#pacman::p_load(textstem, dplyr)
+
+#this errors... not sure why
+myCorpus <- tm_map(myCorpus, lemmatize_words)
+
+
+#Building a Document-Term Matrix
+myDtm <- TermDocumentMatrix(myCorpus, control = list(minWordLength = 1))
+#inspect(myDtm)
+
+rowTotals <- apply(myDtm , 1, sum) #Find the sum of words in each Document
+myDtm <- myDtm[rowTotals > 0, ] #remove all docs without words
+
+#Frequent Terms and Association
+freq.terms <- findFreqTerms(myDtm, lowfreq=(numRows / 20))
+
+term.freq <- rowSums(as.matrix(myDtm))
+term.freq <- subset(term.freq, term.freq >= (numRows / 20))
+df <- data.frame(term = names(term.freq), freq = term.freq)
+
+```
+
+```{r, echo=FALSE}
+
+#library(ggplot2)
+ggplot(df, aes(x = term, y = freq)) + geom_bar(stat = "identity") +
+  xlab("Terms") + ylab("Count") + coord_flip()
+
+# Word cloud setup
+#library(wordcloud)
+m <- as.matrix(myDtm)
+# calculate the frequency of words and sort it by frequency
+word.freq <- sort(rowSums(m), decreasing = T)
+# colors
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:4)]
+
+# plot word cloud
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = (numRows / 100),
+          random.order = F, colors = pal)
+
+
+# Sentiment analysis
+library(data.table)
+require(devtools)
+#install_github("sentiment140", "okugami79")
+
+library(sentimentr)
+sentiments <- sentiment_by(tweets.df$text)
+sentiments <- as.data.frame(sentiments)
+
+# sentiment plot
+colnames(sentiments)=c("score")
+sentiments$date <- as.IDate(tweets.df$created)
+result <- aggregate(score ~ date, data = sentiments, sum)
+#plot(result, type = "l")
+
+
+# Get quantmod
+if (!require("quantmod")) {
+  install.packages("quantmod")
+  library(quantmod)
+}
+
+# request stock price data from source "yahoo"
+library(quantmod)
+start <- as.Date(result[1,1])
+end <- as.Date(result[nrow(result),1] + 1)
+stockprices <- getSymbols("BA", src = "yahoo", from = start, to = end, auto.assign = FALSE)
+stockprices <- data.frame(date=index(stockprices), coredata(stockprices))
+names(stockprices) <- c("date","Open","High","Low","Close","Volume","Adjusted")
+
+# set up a data frame for plotting the Close price
+stockline <- stockprices[,c("date","Close")]
+#plot(result,type="l",col="red")
+#lines(stockline,col="green")
+
+# normalize then replot
+normresult <- result
+normresult$score <- (normresult$score - min(result$score)) / (max(result$score) - min(result$score))
+
+normstock <- stockline
+normstock$Close <- (normstock$Close - min(stockline$Close)) / (max(stockline$Close) - min(stockline$Close))
+
+plot(normresult,type="l",col="red")
+lines(normstock,col="green")
+legend("right", c("Sentiment", "Stock"), col = c("red","green"), lty = 1:3, bg="grey95")#, cex = 0.5)
+title(main = "Normalized Sentiment vs. Stock Price Changes by Day")
+
+
+# Correlation
+df <- merge(result, stockprices[,c("date","Close")], by = "date")
+res <- cor.test(df$score, df$Close, 
+                method = "pearson")
+res
+
+
+```
+The above results show that the stock price movement ended up with the same toward trend as sentiment.
+
+### Company: Tesla (Stock:TSLA)
+Tesla, Inc. designs, develops, manufactures, and sells electric vehicles, and energy generation and storage systems.
+
+Tesla is the topic of thousand of tweets everyday with at least 40% retweets. To gather enough time spread data, 25,000 tweets were extracted and then reduced to about 14,000 by excluding the retweets. 
+Twitter data(Tesla.csv) was captured for post containing "@Tesla". Same analytical process specified above was applied.
+
+```{r, include=FALSE}
+# Download the twitter feed for posts containing "@Tesla"
+#
+#library(twitteR)
+
+# uncomment the following to download fresh data
+#setup_twitter_oauth("yn8eTLfsrUlzv2Y4brm2iJ3f7", "Ulv7MgRbr8JlUSS86kHKuLcN2qRnoTgp5OuyFWW24Xqx63wAOM", 
+#                    "1137080949093650433-NgSH58Rl1S1TLNIo9v7iYH5No3mXjG", "rCwE8p4sBn77y93NQYsdTrxfdZihs51H5EjwcFa4ftJHI")
+#myTweets <- searchTwitter("@Tesla", lang="en", retryOnRateLimit = 20, n=25000)
+
+# removing retweets
+#no_retweets <- strip_retweets(myTweets)
+#length(myTweets)
+
+# convert tweets to a dataframe
+#tweets.df <- twListToDF(no_retweets)
+#dim(tweets.df)
+
+# if testing, import the Tesla.csv file, otherwise comment this out
+tweets.df <- read.csv(file= "./Tesla.csv")
+#length(tweets.df)
+numRows <- nrow(tweets.df) #used later to determine number of terms
+
+# if importing from csv, convert columns to correct type
+tweets.df$text <- as.character(tweets.df$text)
+tweets.df$created <- as.POSIXct(tweets.df$created)
+
+
+# convert dataframe to a corpus
+#library(tm)
+myCorpus <- Corpus(VectorSource(tweets.df$text))
+
+# remove punctuation
+myCorpus <- tm_map(myCorpus, removePunctuation)
+# remove numbers
+myCorpus <- tm_map(myCorpus, removeNumbers)
+# remove http*
+toSpace = content_transformer( function(x, pattern) gsub(pattern,"",x) )
+myCorpus = tm_map( myCorpus, toSpace, "https.*")
+# remove stopwords
+#library(stopwords)
+myStopwords <- c(stopwords(language="en", source="smart"))
+
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+myCorpus <- tm_map(myCorpus, removeWords, myStopwords)
+
+
+#if (!require("pacman")) install.packages("pacman")
+#pacman::p_load_gh("trinker/textstem")
+#pacman::p_load(textstem, dplyr)
+
+#this errors... not sure why
+myCorpus <- tm_map(myCorpus, lemmatize_words)
+
+
+#Building a Document-Term Matrix
+myDtm <- TermDocumentMatrix(myCorpus, control = list(minWordLength = 1))
+#inspect(myDtm)
+
+rowTotals <- apply(myDtm , 1, sum) #Find the sum of words in each Document
+myDtm <- myDtm[rowTotals > 0, ] #remove all docs without words
+
+
+#Frequent Terms and Association
+freq.terms <- findFreqTerms(myDtm, lowfreq=(numRows / 20))
+
+term.freq <- rowSums(as.matrix(myDtm))
+term.freq <- subset(term.freq, term.freq >= (numRows / 20))
+df <- data.frame(term = names(term.freq), freq = term.freq)
+```
+
+```{r, echo=FALSE}
+#library(ggplot2)
+ggplot(df, aes(x = term, y = freq)) + geom_bar(stat = "identity") +
+  xlab("Terms") + ylab("Count") + coord_flip()
+
+# Word cloud setup
+#library(wordcloud)
+m <- as.matrix(myDtm)
+# calculate the frequency of words and sort it by frequency
+word.freq <- sort(rowSums(m), decreasing = T)
+# colors
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:4)]
+
+# plot word cloud
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = (numRows / 100),
+          random.order = F, colors = pal)
+
+
+# Sentiment analysis
+library(data.table)
+require(devtools)
+#install_github("sentiment140", "okugami79")
+
+library(sentimentr)
+sentiments <- sentiment_by(tweets.df$text)
+sentiments <- as.data.frame(sentiments)
+
+# sentiment plot
+colnames(sentiments)=c("score")
+sentiments$date <- as.IDate(tweets.df$created)
+result <- aggregate(score ~ date, data = sentiments, sum)
+#plot(result, type = "l")
+
+
+# Get quantmod
+#if (!require("quantmod")) {
+#  install.packages("quantmod")
+#  library(quantmod)
+#}
+
+# request stock price data from source "yahoo"
+library(quantmod)
+start <- as.Date(result[1,1])
+end <- as.Date(result[nrow(result),1] + 1)
+stockprices <- getSymbols("TSLA", src = "yahoo", from = start, to = end, auto.assign = FALSE)
+stockprices <- data.frame(date=index(stockprices), coredata(stockprices))
+names(stockprices) <- c("date","Open","High","Low","Close","Volume","Adjusted")
+
+# set up a data frame for plotting the Close price
+stockline <- stockprices[,c("date","Close")]
+#plot(result,type="l",col="red")
+#lines(stockline,col="green")
+
+# normalize then replot
+normresult <- result
+normresult$score <- (normresult$score - min(result$score)) / (max(result$score) - min(result$score))
+
+normstock <- stockline
+normstock$Close <- (normstock$Close - min(stockline$Close)) / (max(stockline$Close) - min(stockline$Close))
+
+plot(normresult,type="l",col="red")
+lines(normstock,col="green")
+legend("right", c("Sentiment", "Stock"), col = c("red","green"), lty = 1:3, bg="grey95")#, cex = 0.5)
+title(main = "Normalized Sentiment vs. Stock Price Changes by Day")
+
+
+# Correlation
+df <- merge(result, stockprices[,c("date","Close")], by = "date")
+res <- cor.test(df$score, df$Close, 
+                method = "pearson")
+res
+```
+The resulting analysis is a medium negative correlation of Sentiment towards stock price movement.
+
+### Company: Levi Strauss & Co (Stock: LEVI)
+Levi Strauss & Co. designs, markets, and sells jeans, casual and dress pants, tops, shorts, skirts, jackets, footwear, and related accessories.
+
+Sample dataset "Levis.csv" Twitter data was captured for any "@Levis" indicator. It contains 901 tweets from June 05, 2019 to June 14,2019. Same above analytical process applied.
+
+```{r, include=FALSE}
+# Download the twitter feed for posts containing "@Levis"
+#
+library(twitteR)
+
+# uncomment the following to download fresh data
+#setup_twitter_oauth("yn8eTLfsrUlzv2Y4brm2iJ3f7", "Ulv7MgRbr8JlUSS86kHKuLcN2qRnoTgp5OuyFWW24Xqx63wAOM", 
+#                    "1137080949093650433-NgSH58Rl1S1TLNIo9v7iYH5No3mXjG", #"rCwE8p4sBn77y93NQYsdTrxfdZihs51H5EjwcFa4ftJHI")
+#myTweets <- searchTwitter("@Levis", lang="en", retryOnRateLimit = 5, n=10000) 
+#length(myTweets)
+
+# convert tweets to a dataframe
+#tweets.df <- twListToDF(myTweets)
+#dim(tweets.df)
+
+
+# if testing, import the Levis.csv file, otherwise comment this out
+tweets.df <- read.csv(file= "./Levis.csv")
+#length(tweets.df)
+numRows <- nrow(tweets.df) #used later to determine number of terms
+
+# if importing from csv, convert columns to correct type
+tweets.df$text <- as.character(tweets.df$text)
+tweets.df$created <- as.POSIXct(tweets.df$created)
+
+
+# convert dataframe to a corpus
+#library(tm)
+myCorpus <- Corpus(VectorSource(tweets.df$text))
+
+# remove punctuation
+myCorpus <- tm_map(myCorpus, removePunctuation)
+# remove numbers
+myCorpus <- tm_map(myCorpus, removeNumbers)
+# remove http*
+toSpace = content_transformer( function(x, pattern) gsub(pattern,"",x) )
+myCorpus = tm_map( myCorpus, toSpace, "https.*")
+# remove stopwords
+library(stopwords)
+myStopwords <- c(stopwords(language="en", source="smart"))
+
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+myCorpus <- tm_map(myCorpus, removeWords, myStopwords)
+
+
+#if (!require("pacman")) install.packages("pacman")
+#pacman::p_load_gh("trinker/textstem")
+#pacman::p_load(textstem, dplyr)
+
+#this errors... not sure why
+myCorpus <- tm_map(myCorpus, lemmatize_words)
+
+
+#Building a Document-Term Matrix
+myDtm <- TermDocumentMatrix(myCorpus, control = list(minWordLength = 1))
+#inspect(myDtm)
+
+rowTotals <- apply(myDtm , 1, sum) #Find the sum of words in each Document
+myDtm <- myDtm[rowTotals > 0, ] #remove all docs without words
+
+
+#Frequent Terms and Association
+freq.terms <- findFreqTerms(myDtm, lowfreq=(numRows / 20))
+
+term.freq <- rowSums(as.matrix(myDtm))
+term.freq <- subset(term.freq, term.freq >= (numRows / 20))
+df <- data.frame(term = names(term.freq), freq = term.freq)
+```
+
+```{r, echo=FALSE}
+#library(ggplot2)
+ggplot(df, aes(x = term, y = freq)) + geom_bar(stat = "identity") +
+  xlab("Terms") + ylab("Count") + coord_flip()
+
+# Word cloud setup
+#library(wordcloud)
+m <- as.matrix(myDtm)
+# calculate the frequency of words and sort it by frequency
+word.freq <- sort(rowSums(m), decreasing = T)
+# colors
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:4)]
+
+# plot word cloud
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = (numRows / 100),
+          random.order = F, colors = pal)
+
+
+# Sentiment analysis
+#library(data.table)
+#require(devtools)
+#install_github("sentiment140", "okugami79")
+
+#library(sentimentr)
+sentiments <- sentiment_by(tweets.df$text)
+sentiments <- as.data.frame(sentiments)
+
+# sentiment plot
+colnames(sentiments)=c("score")
+sentiments$date <- as.IDate(tweets.df$created)
+result <- aggregate(score ~ date, data = sentiments, sum)
+#plot(result, type = "l")
+
+
+# Get quantmod
+#if (!require("quantmod")) {
+#  install.packages("quantmod")
+#  library(quantmod)
+#}
+
+# request stock price data from source "yahoo"
+#library(quantmod)
+start <- as.Date(result[1,1])
+end <- as.Date(result[nrow(result),1] + 1)
+stockprices <- getSymbols("LEVI", src = "yahoo", from = start, to = end, auto.assign = FALSE)
+stockprices <- data.frame(date=index(stockprices), coredata(stockprices))
+names(stockprices) <- c("date","Open","High","Low","Close","Volume","Adjusted")
+
+# set up a data frame for plotting the Close price
+stockline <- stockprices[,c("date","Close")]
+#plot(result,type="l",col="red")
+#lines(stockline,col="green")
+
+# normalize then replot
+normresult <- result
+normresult$score <- (normresult$score - min(result$score)) / (max(result$score) - min(result$score))
+
+normstock <- stockline
+normstock$Close <- (normstock$Close - min(stockline$Close)) / (max(stockline$Close) - min(stockline$Close))
+
+plot(normresult,type="l",col="red")
+lines(normstock,col="green")
+legend("right", c("Sentiment", "Stock"), col = c("red","green"), lty = 1:3, bg="grey95")#, cex = 0.5)
+title(main = "Normalized Sentiment vs. Stock Price Changes by Day")
+
+
+# Correlation
+df <- merge(result, stockprices[,c("date","Close")], by = "date")
+res <- cor.test(df$score, df$Close, 
+                method = "pearson")
+res
+
+```
+In the Normalized Sentiment vs. Stock Price Changes by Day chart above, we can observe how the sentiment trend is preceding the stock price movement.
+
+### Conclusion
+
+Apple twitter sentiment appears to have a strong positive correlated relationship with its stock price. Boeing and Levis also are also showing to have some medium to high degree of relationship when compare visually.  Tesla is correlated negatively which might be attributed to iits maturity as a company.
+
+We can also appreciate in the case of Apple, Boeing and Levis how the sentiment trend is preceding to stock trend.  
+
+The above analysis shows that while public opinion is a major factor in stock price movement, it also indicates that Twitter Sentiment analysis can be used to gage and quantify this public opinion. Hence the ability to predict a company stock price.
+
+### Deployment and Discussion
+The Twitter API Data is limited to a 10 days time frame. Further reasearh is recommended with the use larger historical dataset and enable better accuracy.
+
+
+### Shiny app
+The datsets and models developed in this project were adapted for a Shiny app proof of concept deployed at https://group4-afsmst.shinyapps.io/SentimentVsStockPrice/. The intention is show the deployment possiblity of having a simple user interface.
+
+**Note:** You may experience timeouts due to the Shiny server processing limits. Please reload and make your selection again.    
+Code of the application are attached with his document package.  
+
+
+
+References:
+
+https://www.barrons.com/articles/twitter-influences-markets-more-than-traditional-media-51546875240
+https://www.sciencedirect.com/science/article/pii/S2405918817300247
+https://dataaspirant.com/2018/03/22/twitter-sentiment-analysis-using-r/
+
+
