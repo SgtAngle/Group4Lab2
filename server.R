@@ -144,7 +144,7 @@ shinyServer(function(input, output) {
             pal <- pal[-(1:4)]
             
             # plot word cloud
-            output$wordcloud <- renderPlot(wordcloud(words = names(word.freq), freq = word.freq, min.freq = (numRows / 100),
+            output$wordcloud <- renderPlot(wordcloud(words = names(word.freq), freq = word.freq, min.freq = (numRows / 20),
                                                      random.order = F, colors = pal)) 
             
             

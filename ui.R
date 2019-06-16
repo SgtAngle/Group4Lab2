@@ -25,7 +25,9 @@ shinyUI(fluidPage(
             selectInput("company", "Select company:", 
                         choices=c("","Apple","Boeing","Levis","Tesla")),
             hr(),
-            helpText("Sample data from four predetermined companies ending June 14, 2019")
+            helpText("Sample data from four predetermined companies ending June 14, 2019"),
+            hr(),
+            h5("NOTE - initial results appear after 30 seconds.  Subsequent selections may require reloading the app due to memory restrictions.")
         ),
 
         # Show a plot of the generated distribution
